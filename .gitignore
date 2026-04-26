@@ -1,0 +1,40 @@
+# Virtual Environment
+venv/
+.env
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Datasets, Weights and Results for Tracking
+Multi-Camera-Person-Tracking-and-Re-Identification/videos/
+Multi-Camera-Person-Tracking-and-Re-Identification/data/
+Multi-Camera-Person-Tracking-and-Re-Identification/model_data/
+Multi-Camera-Person-Tracking-and-Re-Identification/results/
+# Multi-Camera-Person-Tracking-and-Re-Identification/yolov4.weights
+# Multi-Camera-Person-Tracking-and-Re-Identification/yolov4.h5
+
+# Datasets, Checkpoints and Logs for Video Re-ID
+STMN_ReID/database/
+# STMN_ReID/checkpoints/  (Uncommented so you can upload your trained models)
+STMN_ReID/logs/
+
+# LaTeX Build Files
+*.aux
+*.log
+*.nav
+*.out
+*.snm
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg

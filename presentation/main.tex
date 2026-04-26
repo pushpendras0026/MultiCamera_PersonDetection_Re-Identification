@@ -1,0 +1,85 @@
+\documentclass{beamer}
+\usetheme{Boadilla}
+\usecolortheme{seahorse}
+\usefonttheme{serif}
+
+\usepackage{graphicx,xcolor}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+
+\newcommand{\inputsegment}[1]{%
+    \IfFileExists{segments/#1.tex}{\input{segments/#1}}{\input{#1}}%
+}
+
+\AtBeginSection[]{
+    \begin{frame}{Outline}
+        \tableofcontents[currentsection]
+    \end{frame} }
+
+\title[STMN for Video Re-ID]{Spatial-Temporal Memory Networks for Motion Removal\\in Video-Based Person Re-Identification}
+\subtitle{Project Presentation}
+\author[Das \& Singh]{Pushpendra Singh (240150026) \and Badri Bishal Das (240150006)}
+\institute[DSAI, IITG]{Mehta Family School of Data Science and Artificial Intelligence\\Indian Institute of Technology, Guwahati}
+\date{2026}
+\IfFileExists{images/logo/IITG.png}{
+    \titlegraphic{\includegraphics[width=2cm]{images/logo/IITG.png}}
+}{
+    \IfFileExists{images/IITG.png}{
+        \titlegraphic{\includegraphics[width=2cm]{images/IITG.png}}
+    }{
+        \IfFileExists{IITG.png}{
+            \titlegraphic{\includegraphics[width=2cm]{IITG.png}}
+        }{
+            \titlegraphic{}
+        }
+    }
+}
+
+\begin{document}
+
+\begin{frame}
+\titlepage
+\end{frame}
+
+\begin{frame}{Outline}
+    \tableofcontents
+\end{frame}
+
+
+\section{Introduction}
+\inputsegment{1_intro}
+
+\section{System Model \& Problem Formulation}
+\inputsegment{2_build}
+
+\section{Solution Methodology \& Case Study}
+\inputsegment{3_argue}
+
+\section{Key Insights \& Conclusion}
+\inputsegment{4_conclude}
+
+
+\section*{References}
+\begin{frame}[allowframebreaks]
+    \frametitle{References}
+    \nocite{*}
+    \bibliographystyle{ieeetr}
+    \bibliography{ref.bib}
+\end{frame}
+
+\begin{frame}
+    \centering
+    \vfill
+    {\Huge \textbf{Thank You!}}\\[1em]
+    {\Large Questions \& Discussion}
+    \vfill
+    {\small Levitin, Xing \& Dai --- \textit{Reliability Engineering and System Safety}, Vol. 251, 2024}
+    \vfill
+\end{frame}
+
+\end{document}

@@ -1,0 +1,47 @@
+% ===== SLIDE: Paper Overview =====
+\begin{frame}{Paper Overview}
+
+    \begin{block}{Paper Under Consideration}
+        \textbf{Spatial-Temporal Memory Networks for Motion Removal in Video-Based Person Re-Identification}\\
+        Eunbin, et al.
+    \end{block}
+
+    \smallskip
+    \begin{alertblock}{Central Question}
+        How to effectively handle moving distractors (e.g., vehicles, bicycles, other pedestrians) that occlude the target person in video sequences?
+    \end{alertblock}
+
+    \medskip
+    \textbf{Core Approach:}
+    \begin{itemize}\setlength\itemsep{2pt}
+        \item \textbf{Spatial Memory (SMM):} Stores typical motion patterns of backgrounds to refine spatial features at the frame level.
+        \item \textbf{Temporal Memory (TMM):} Aggregates refined spatial features across frames to build a robust identity representation.
+    \end{itemize}
+
+\end{frame}
+
+% ===== SLIDE: Motivation & Research Gap =====
+\begin{frame}{Motivation \& Research Gap}
+    Person Re-Identification (ReID) aims to retrieve a target person across multiple non-overlapping cameras.
+    \smallskip
+    \begin{itemize}\setlength\itemsep{2pt}
+        \item Video-based ReID utilizes temporal sequences, offering richer information than static images.
+        \item However, videos often contain \textbf{complex moving distractors} that obscure the target.
+    \end{itemize}
+
+    \smallskip
+    \begin{alertblock}{Research Gap}
+        \vspace{-0pt}
+        \begin{enumerate}\setlength\itemsep{2pt}
+            \item Existing models often assume moving parts belong solely to the target person, leading to \textbf{temporal misalignment} when distractors move.
+            \item Methods relying on optical flow or 3D CNNs struggle to distinguish the target's motion from complex background motion.
+        \end{enumerate}
+        \vspace{-0pt}
+    \end{alertblock}
+
+    \begin{exampleblock}{Contribution}
+        \vspace{-2pt}
+        The \textbf{STMN} framework explicitly models and removes background motion patterns, enabling robust feature extraction even in highly cluttered scenes.
+        \vspace{-2pt}
+    \end{exampleblock}
+\end{frame}

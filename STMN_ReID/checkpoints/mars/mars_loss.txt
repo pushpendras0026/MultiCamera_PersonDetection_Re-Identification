@@ -1,0 +1,106 @@
+
+============================================================
+train_txt   : database/MARS_database/train_path.txt
+n_class     : 625
+epochs      : 200
+lr          : 0.0001  step=50
+smem_size   : 10   tmem_size: 5
+============================================================
+
+============================================================
+train_txt   : ..\database\MARS_database\train_path.txt
+n_class     : 625
+epochs      : 200
+lr          : 0.0001  step=50
+smem_size   : 10   tmem_size: 5
+============================================================
+
+============================================================
+train_txt   : ..\database\MARS_database\train_path.txt
+n_class     : 625
+epochs      : 200
+lr          : 0.0001  step=50
+smem_size   : 10   tmem_size: 5
+============================================================
+
+============================================================
+train_txt   : ..\database\MARS_database\train_path.txt
+n_class     : 625
+epochs      : 200
+lr          : 0.0001  step=50
+smem_size   : 10   tmem_size: 5
+============================================================
+
+============================================================
+train_txt   : ..\database\MARS_database\train_path.txt
+n_class     : 625
+epochs      : 200
+lr          : 0.0001  step=50
+smem_size   : 10   tmem_size: 5
+============================================================
+
+============================================================
+train_txt   : ..\database\MARS_database\train_path.txt
+n_class     : 625
+epochs      : 50
+lr          : 0.0003  step=25
+smem_size   : 10   tmem_size: 5
+AMP         : ENABLED
+============================================================
+[Epoch 001]  avg_loss=15.0184
+[Epoch 002]  avg_loss=13.7607
+[Epoch 003]  avg_loss=12.3284
+[Epoch 004]  avg_loss=10.7450
+[Epoch 005]  avg_loss=9.2672
+[Epoch 006]  avg_loss=7.7405
+[Epoch 007]  avg_loss=6.7631
+[Epoch 008]  avg_loss=5.8308
+[Epoch 009]  avg_loss=4.8976
+[Epoch 010]  R1=61.6%  mAP=48.1%
+[Epoch 010]  avg_loss=4.4287
+[Epoch 011]  avg_loss=3.9090
+[Epoch 012]  avg_loss=3.4662
+[Epoch 013]  avg_loss=3.3114
+[Epoch 014]  avg_loss=2.8711
+[Epoch 015]  avg_loss=2.6477
+[Epoch 016]  avg_loss=2.4676
+[Epoch 017]  avg_loss=2.3855
+[Epoch 018]  avg_loss=2.3571
+[Epoch 019]  avg_loss=1.9070
+[Epoch 020]  R1=68.0%  mAP=57.8%
+[Epoch 020]  avg_loss=2.0109
+[Epoch 021]  avg_loss=1.9113
+[Epoch 022]  avg_loss=1.7520
+[Epoch 023]  avg_loss=1.6512
+[Epoch 024]  avg_loss=1.5998
+[Epoch 025]  avg_loss=1.5214
+[Epoch 026]  avg_loss=1.1190
+[Epoch 027]  avg_loss=0.8879
+[Epoch 028]  avg_loss=0.9016
+[Epoch 029]  avg_loss=0.7862
+[Epoch 030]  R1=73.5%  mAP=65.5%
+[Epoch 030]  avg_loss=0.7491
+[Epoch 031]  avg_loss=0.7004
+[Epoch 032]  avg_loss=0.7535
+[Epoch 033]  avg_loss=0.6223
+[Epoch 034]  avg_loss=0.6092
+[Epoch 035]  avg_loss=0.6121
+[Epoch 036]  avg_loss=0.5911
+[Epoch 037]  avg_loss=0.6010
+[Epoch 038]  avg_loss=0.5836
+[Epoch 039]  avg_loss=0.5490
+[Epoch 040]  R1=74.3%  mAP=68.1%
+[Epoch 040]  avg_loss=0.5667
+[Epoch 041]  avg_loss=0.4866
+[Epoch 042]  avg_loss=0.5176
+[Epoch 043]  avg_loss=0.4990
+[Epoch 044]  avg_loss=0.5131
+[Epoch 045]  avg_loss=0.5261
+[Epoch 046]  avg_loss=0.4749
+[Epoch 047]  avg_loss=0.4291
+[Epoch 048]  avg_loss=0.4144
+[Epoch 049]  avg_loss=0.3966
+[Epoch 050]  R1=75.0%  mAP=69.1%
+[Epoch 050]  avg_loss=0.4421
+
+[FINAL]  Rank-1=77.09%   mAP=71.24%

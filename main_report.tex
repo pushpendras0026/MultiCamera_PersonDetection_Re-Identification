@@ -1,0 +1,356 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{url}
+
+\begin{document}
+
+\title{Video-based Person Re-identification with Spatial and Temporal Memory Networks}
+
+\author{
+    \IEEEauthorblockN{Pushpendra Singh}
+    \IEEEauthorblockA{
+        Roll No.: 240150026\\
+        Mehta Family School of Data Science and Artificial Intelligence\\
+        Indian Institute of Technology, Guwahati\\
+        \texttt{pushpendras0026@iitg.ac.in}
+    }
+}
+
+\maketitle
+
+\begin{abstract}
+this report presents my implementation of the STMN paper by Eom et al.~\cite{eom2021stmn} for video-based person re-identification. cctv videos often contain two main types of distractions. first there are spatial distractors, these are background objects that are generally same across all videos for a given camera. second there are temporal distractions like occlusions which are also repeated patterns across time.
+
+STMN addresses these problems using two external memory modules. the spatial memory helps in removing background noise from each frame while the temporal memory helps in finding the importance of each frame before finding the final feature representation. i implemented the complete pipeline in PyTorch and evaluated it on the MARS and iLIDS-VID datasets. i also did some experiments to understand how each component contributes to overall performance. this report covers the model architecture, training setup, implementation challenges and the results i got.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Person Re-Identification, Memory Networks, Video Analysis, Spatial Distractor, Temporal Attention, Deep Learning
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+Person Re-Identification (ReID) is the problem of giving the same id to the same person across different cameras that do not have any overlapping views. it is useful in a lot of real world situations like campus surveillance, tracking suspects, search and rescue and even retail footfall analysis. but it is not that much of an easy problem because there are multiple factors that make it hard --- different camera views, different lighting conditions, the person wearing different clothes on different days and so on.
+
+Image based ReID has been studied a lot and CNNs are quite decent at this~\cite{li2018harmonious}. video based ReID is a step harder because now you are getting a sequence of frames instead of just a single image. on paper that should help since you have more information per person. in practice it brings in new problems. many consecutive frames share the exact same background noise. in some frames the person might be partially blocked by a bicycle, a wall or another pedestrian. there can also be slight misalignment between frames when the person is moving fast.
+
+Earlier approaches tried handling this with attention modules~\cite{fu2019sta} or by doing co-attention across frames~\cite{liu2019ste}. these methods work to some extent but they all have a shared weakness --- they never actually model why certain parts of a frame are distracting in the first place. an attention module that sees the same messy background in every frame just learns to downweight it uniformly. it never actually learns that this particular tree or streetlight keeps appearing and should be actively filtered.
+
+The main observation in STMN~\cite{eom2021stmn} is that distractors in surveillance videos are actually quite predictable. since cameras are placed at fixed spots, spatial distractors like trees, streetlights and concrete pavers always appear at the same location in every frame. similarly temporal patterns like a person getting occluded in the first few frames or disappearing near the end of the clip repeat across many different videos in the dataset.
+
+Figure~\ref{fig:noise} shows some examples of these recurring spatial distractors and also typical temporal attention patterns across different groups of sequences.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.95\columnwidth]{example_noise.png}
+    \caption{(a) spatial distractors like playfields, streetlights and concrete pavers that keep appearing in surveillance footage. (b) temporal attention patterns that repeat across different groups of sequences. these two types of recurring patterns are exactly what the spatial and temporal memory modules learn to handle.}
+    \label{fig:noise}
+\end{figure}
+
+If we can store these patterns in an external memory and just look them up at test time, we can subtract out the spatial background noise and also decide more intelligently which frames matter more during aggregation. that is the core idea behind STMN.
+
+\subsection*{Objective}
+I built the STMN framework from scratch in PyTorch, trained it on MARS and iLIDS-VID and tried to really understand what each design decision is doing. Section~\ref{sec:related} has a brief look at related work. Section~\ref{sec:arch} explains the architecture. Section~\ref{sec:train} covers training. Section~\ref{sec:impl} has notes from my implementation. Section~\ref{sec:results} has the results and Section~\ref{sec:conclusion} is the conclusion.
+
+\section{Related Work}
+\label{sec:related}
+
+\textbf{Attention-based methods.} QAN~\cite{liu2017qan} was one of the early methods to use temporal attention for selecting useful frames. STA~\cite{fu2019sta} added spatial attention on top to also filter within-frame noise. these are reasonable approaches but they process each frame independently and have no sense of the full sequence, so they can end up focusing on wrong parts.
+
+\textbf{Co-attention methods.} GLTR~\cite{li2019gltr} and STE-NVAN~\cite{liu2019ste} use non-local operations across frames to gather shared identity cues. the problem is that shared background clutter also gets shared and highlighted this way, which does the opposite of what you want.
+
+\textbf{Memory networks.} Memory networks~\cite{sukhbaatar2015end} showed that storing information in an external key-value store and retrieving it during inference is useful for reasoning tasks. STMN borrows this idea and uses it for storing recurring distractor patterns in video ReID, which makes a lot of sense given that these patterns repeat constantly across a dataset.
+
+\section{Architecture}
+\label{sec:arch}
+
+\subsection{Overview}
+
+The input is a short video clip of a person called a tracklet. say it has $L$ frames written as $\{F_i\}_{i=1}^{L}$. the model needs to output a single $D$-dimensional vector that represents this person's identity well enough for retrieval across cameras. there are three main parts: the encoder, the spatial memory and the temporal memory.
+
+\subsection{Encoder}
+
+The encoder is a ResNet backbone~\cite{he2016residual} cut off at the conv4 layer. cutting it here keeps the spatial resolution of the feature maps which is important for the spatial memory to work correctly. for each frame $F_i$, three separate convolution heads on top of the backbone give us:
+
+\begin{itemize}
+    \item $\mathbf{f}^o_i \in \mathbb{R}^{D \times K}$: person representation for frame $i$
+    \item $\mathbf{q}^s_i \in \mathbb{R}^{D \times K}$: query map for the spatial memory
+    \item $\mathbf{q}^t_i \in \mathbb{R}^{D \times K}$: query map for the temporal memory
+\end{itemize}
+
+here $K = H \times W$ is the total number of spatial positions in the feature map. the feature at one particular position $k$ is written as $\mathbf{f}^o_{i,k} \in \mathbb{R}^D$.
+
+Something worth pointing out here is that the person representation and the query maps come from different heads. this is intentional. the idea is that identity features should only care about the person and the query maps should handle context like what the background looks like or what the temporal pattern of the sequence is. if they share the same features, training becomes messy because these two objectives pull in different directions.
+
+\subsection{Spatial Memory}
+
+Figure~\ref{fig:spatial} shows the spatial memory module. it is a key-value store with $M$ slots. the keys $\mathbf{k}^s \in \mathbb{R}^{D \times M}$ are learned vectors used for lookup and the values $\mathbf{v}^s \in \mathbb{R}^{D \times M}$ store the distractor patterns the memory has learned over training.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.92\columnwidth]{spatial_memory.png}
+    \caption{the spatial memory module. the query map $\mathbf{q}^s_i$ addresses the key-value memory and the retrieved output $\mathbf{o}^s_i$ is subtracted from the raw person feature $\mathbf{f}^o_i$ to get the cleaned-up representation $\mathbf{f}^s_i$.}
+    \label{fig:spatial}
+\end{figure}
+
+For each spatial position $k$ in frame $i$, the query at that position is compared with every memory key using a softmax over dot products to get a matching probability:
+
+\begin{equation}
+    a^s_{i,k,n} = \frac{\exp\bigl((\mathbf{q}^s_{i,k})^\top \mathbf{k}^s_n\bigr)}{\sum_{n'=1}^{M} \exp\bigl((\mathbf{q}^s_{i,k})^\top \mathbf{k}^s_{n'}\bigr)}
+    \label{eq:sm_attn}
+\end{equation}
+
+Intuitively $a^s_{i,k,n}$ is telling us how likely it is that position $k$ of frame $i$ contains the kind of distractor stored in memory slot $n$. the retrieved distractor feature is then a weighted sum of the value vectors:
+
+\begin{equation}
+    \mathbf{o}^s_{i,k} = \sum_{n=1}^{M} a^s_{i,k,n}\, \mathbf{v}^s_n
+    \label{eq:sm_out}
+\end{equation}
+
+This retrieved feature is then subtracted from the original person representation to get a cleaner version:
+
+\begin{equation}
+    \mathbf{f}^s_{i,k} = \mathbf{f}^o_{i,k} - \mathrm{BN}(\mathbf{o}^s_{i,k})
+    \label{eq:sm_refine}
+\end{equation}
+
+The BN here is batch normalisation. it is there because the memory output and the encoder output are on very different scales, and directly subtracting them without normalising causes training to collapse. i will talk more about this in Section~\ref{sec:impl}.
+
+\subsection{Temporal Memory}
+
+Figure~\ref{fig:temporal} shows the temporal memory. it also has a key-value structure with $N$ slots. the keys $\mathbf{k}^t \in \mathbb{R}^{D \times N}$ store prototypes of different temporal patterns that appear in person videos. the values $\mathbf{v}^t \in \mathbb{R}^{L \times N}$ store the corresponding attention vectors over $L$ frames, basically encoding which frames matter most for each temporal pattern.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=\columnwidth]{temporal_memory.png}
+    \caption{the temporal memory module. query maps from all frames are pooled and fed through an LSTM to produce the context vector $\mathbf{q}^t$. this is used to address the temporal memory and the output $\mathbf{o}^t$ is a frame-level attention vector used to aggregate the refined spatial features $\mathbf{f}^s_i$ into a final descriptor.}
+    \label{fig:temporal}
+\end{figure}
+
+The first step is to encode what kind of temporal pattern this particular sequence has. the query maps from all frames are spatially pooled using Global Average Pooling (GAP) and then fed into an LSTM one by one:
+
+\begin{equation}
+    \mathbf{q}^t = \mathrm{LSTM}\bigl([\mathrm{GAP}(\mathbf{q}^t_1),\; \mathrm{GAP}(\mathbf{q}^t_2),\; \ldots,\; \mathrm{GAP}(\mathbf{q}^t_L)]\bigr)
+    \label{eq:lstm}
+\end{equation}
+
+The last hidden state $\mathbf{q}^t \in \mathbb{R}^D$ summarises the overall temporal context of this sequence. this is then used to look up the temporal memory:
+
+\begin{equation}
+    a^t_n = \frac{\exp\bigl((\mathbf{q}^t)^\top \mathbf{k}^t_n\bigr)}{\sum_{n'=1}^{N} \exp\bigl((\mathbf{q}^t)^\top \mathbf{k}^t_{n'}\bigr)}
+    \label{eq:tm_attn}
+\end{equation}
+
+The temporal attention vector is retrieved as:
+
+\begin{equation}
+    \mathbf{o}^t = \sum_{n=1}^{N} a^t_n\, \mathbf{v}^t_n
+    \label{eq:tm_out}
+\end{equation}
+
+$\mathbf{o}^t \in \mathbb{R}^L$ has one score per frame, telling us how important each frame is for this sequence. after softmax normalisation to get $\hat{o}^t_i$, the final person descriptor is computed as a weighted combination of the refined frame features:
+
+\begin{equation}
+    \mathbf{f}^t = \sum_{i=1}^{L} \hat{o}^t_i\; \mathrm{GAP}(\mathbf{f}^s_i)
+    \label{eq:final}
+\end{equation}
+
+$\mathbf{f}^t \in \mathbb{R}^D$ is what gets used for retrieval at test time.
+
+\section{Training}
+\label{sec:train}
+
+\subsection{Loss Functions}
+
+The total loss is $\mathcal{L}_\text{total} = \mathcal{L}_S + \mathcal{L}_{ID}$.
+
+\subsubsection{Memory Spread Loss}
+
+without any constraint on how the memory is accessed, the model naturally starts using the same one or two slots repeatedly and ignores the rest. this makes the whole memory pointless because all inputs get the same retrieved feature. the memory spread loss is designed to fix this.
+
+The idea is to look at the matching probabilities for each memory slot across the whole training batch and penalise any slot whose probabilities do not vary enough. if a slot is being used in the same way for every input, either always or never, the loss fires. let $\mathbf{a}^s_n$ be the vector of all matching probabilities for spatial slot $n$ across the batch and $\mathbf{a}^t_n$ be the same for temporal. the loss is:
+
+\begin{equation}
+    \mathcal{L}_S = \sum_{n=1}^{M} \bigl[\min(\mathbf{a}^s_n) - \max(\mathbf{a}^s_n) + \alpha\bigr]_+
+                  + \sum_{n=1}^{N} \bigl[\min(\mathbf{a}^t_n) - \max(\mathbf{a}^t_n) + \alpha\bigr]_+
+    \label{eq:spread}
+\end{equation}
+
+The loss fires when $(\max - \min) < \alpha$, meaning the slot is being used too uniformly. the margin $\alpha = 0.3$ and $[\cdot]_+ = \max(0, \cdot)$.
+
+Figure~\ref{fig:probmatch} shows matching probability maps with and without this loss. without it, one column dominates everything. with it, the probabilities spread out nicely and different queries activate different slots.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.92\columnwidth]{prob_match.png}
+    \caption{matching probability maps for spatial memory. left: without the memory spread loss, the model keeps hitting the same slot for every query. right: with the loss, different queries activate different memory slots which is exactly what we want.}
+    \label{fig:probmatch}
+\end{figure}
+
+\subsubsection{Identification Loss}
+
+This is a combination of cross-entropy loss for person classification and batch-hard triplet loss~\cite{hermans2017triplet}. cross-entropy pushes the model to produce features that are good at predicting the correct person identity. the triplet loss with hard mining selects the most difficult positive and negative pairs in the batch for each anchor, which forces tighter clustering of same-identity features and better separation of different-identity features. both losses are applied to the final feature $\mathbf{f}^t$ and also to the intermediate frame-level features $\mathbf{f}^s_i$ using deep supervision.
+
+\subsection{Optimiser and Schedule}
+
+The model is trained for 200 epochs end to end. Adam optimiser is used with $\beta_1 = 0.9$ and $\beta_2 = 0.999$. the learning rate starts at $10^{-4}$ and is dropped by a factor of 10 every 50 epochs.
+
+\subsection{Data Sampling and Augmentation}
+
+The restricted random sampling (RRS) strategy is followed during both training and evaluation. for each tracklet, it is split into $L = 6$ equal chunks and one frame is randomly picked from each. mini-batches have 8 identities with 4 sequences each. frames are resized to $256 \times 128$. augmentation used is random horizontal flipping and random erasing.
+
+\subsection{Hyperparameters}
+
+The spatial and temporal memory sizes are $M = 10$ and $N = 5$. the spread loss margin is $\alpha = 0.3$ and sequence length is $L = 6$. these were found using grid search on a held out portion of the MARS training set.
+
+\section{Implementation Notes}
+\label{sec:impl}
+
+This section has some notes on things i found tricky or non-obvious while actually building this.
+
+\textbf{Memory key initialisation.} the keys and values are just learnable parameters. i used a normal distribution with a small standard deviation (about 0.01) to initialise them. if the keys start too large, the dot products in Equations~\ref{eq:sm_attn} and~\ref{eq:tm_attn} blow up early in training and the softmax produces very sharp distributions before the model has learned anything useful. small initialisation keeps early training stable.
+
+\textbf{The BN in spatial memory.} this is the easiest thing to miss in the paper but one of the most important. the memory output $\mathbf{o}^s_{i,k}$ is a weighted combination of learned value vectors and has a very different magnitude compared to $\mathbf{f}^o_{i,k}$ from the encoder. without the batch normalisation in Equation~\ref{eq:sm_refine}, the subtraction is just dominated by the scale difference and the model learns nothing useful. i skipped this in my first attempt and training would not converge at all.
+
+\textbf{What the LSTM actually does.} i initially misread the role of the LSTM. in normal RNN-based ReID methods the LSTM is used to aggregate frame features sequentially. in STMN it is only producing the context vector $\mathbf{q}^t$ for looking up the temporal memory. the actual frame aggregation happens through the attention weights from the memory values in Equation~\ref{eq:final}. when i made the mistake of using LSTM hidden states to aggregate features directly, the results were noticeably worse.
+
+\textbf{Why the query heads must be separate.} in my first implementation i shared the person representation $\mathbf{f}^o_i$ with the query maps to reduce the number of parameters. this hurt performance a lot. the identity feature and the temporal context query need to learn very different things. sharing them creates a gradient conflict and neither objective is learned well.
+
+\textbf{Memory spread loss weight.} the weight you put on $\mathcal{L}_S$ in the total loss matters more than it looks. too small and the memory still collapses to a few slots. too large and it overrides the identity signal and the model just tries to make memory usage diverse without learning to recognise people. a weight of 0.1 worked well in practice.
+
+\textbf{Deep supervision helps.} applying cross-entropy and triplet losses to the intermediate $\mathbf{f}^s_i$ features and not only to the final $\mathbf{f}^t$ speeds up convergence noticeably. the spatial memory gets a meaningful gradient from very early in training instead of waiting for the whole pipeline to warm up.
+
+\section{Results}
+\label{sec:results}
+
+\subsection{Evaluation Setup}
+
+I followed the standard evaluation protocol for each dataset. the metrics are Rank-1 CMC accuracy and mean Average Precision (mAP). CMC Rank-1 means the correct person was the top result. mAP looks at overall retrieval quality across all queries and is considered the more reliable metric. at test time the full evaluation uses all frames per tracklet with horizontal-flip TTA (test-time augmentation).
+
+Note that due to hardware constraints (8~GB GPU VRAM), i trained with a reduced configuration compared to the paper: sequence length $L = 4$ (paper uses 6), batch of 6 identities $\times$ 2 sequences (paper uses 8 $\times$ 4), and fewer epochs --- 50 for MARS and 175 for iLIDS-VID (paper uses 200 and 800 respectively). the learning rate was set to $3 \times 10^{-4}$ with step decay. mixed-precision training (AMP) was used to fit the model in the available VRAM.
+
+\subsection{Our Results}
+
+Table~\ref{tab:results} shows the numbers i got after training the model and running the evaluation scripts.
+
+\begin{table}[ht]
+\centering
+\caption{Evaluation results on MARS and iLIDS-VID after training the STMN pipeline with our reduced configuration.}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Dataset} & \textbf{Rank-1} & \textbf{mAP} \\
+\midrule
+MARS      & 52.00\% & 64.57\% \\
+iLIDS-VID & 77.09\% & 71.24\% \\
+\bottomrule
+\end{tabular}
+\label{tab:results}
+\end{table}
+
+The gap between our results and the paper's numbers (MARS Rank-1 of 89.9\%, mAP of 83.7\%) is expected given the significantly reduced training budget --- fewer epochs, shorter sequence length and smaller batch size all affect the final accuracy. the iLIDS-VID result is closer to competitive because it is a smaller dataset that converges faster even with fewer epochs.
+
+\subsection{Ablation Study}
+
+Table~\ref{tab:ablation} shows the contribution of each component. the numbers here are from the original paper~\cite{eom2021stmn}.
+
+\begin{table}[ht]
+\centering
+\caption{Ablation on MARS, DukeV and LS-VID. SM is Spatial Memory, TM is Temporal Memory. Numbers are Rank-1 (\%) and mAP (\%).}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Configuration} & \textbf{MARS R1} & \textbf{MARS mAP} & \textbf{DukeV R1} & \textbf{LSVID R1} \\
+\midrule
+Baseline                    & 87.3 & 79.1 & 95.0 & 71.6 \\
++ SM (no spread loss)       & 88.7 & 81.6 & 95.4 & 78.8 \\
++ SM                        & 89.3 & 82.5 & 96.2 & 79.6 \\
++ TM (no spread loss)       & 88.5 & 81.9 & 95.2 & 77.8 \\
++ TM                        & 89.5 & 82.0 & 95.4 & 78.9 \\
++ SM + TM (no spread loss)  & 89.1 & 81.9 & 95.6 & 79.9 \\
+\textbf{+ SM + TM (full)}   & \textbf{89.9} & \textbf{83.7} & \textbf{96.7} & \textbf{80.6} \\
+\bottomrule
+\end{tabular}
+\label{tab:ablation}
+\end{table}
+
+A few things stand out from this table. first, SM and TM both help individually and combining them gives the best result, so they are clearly doing different things and complementing each other. second, the memory spread loss adds a small but consistent improvement in every single row. without it the memories are not being used the right way. third, the gain on LS-VID is the biggest among all datasets. LS-VID is the hardest one with lots of background variation and frequent occlusions, which is exactly the situation where having a memory of recurring distractor patterns helps the most. on DukeMTMC-VideoReID the gains are smaller because that dataset is manually annotated and relatively clean, so the baseline already does quite well.
+
+\section{Discussion and Conclusion}
+\label{sec:conclusion}
+
+The STMN paper has a clean and well thought out design. the central idea is that surveillance videos have predictable patterns both in space and time, so instead of learning to handle each video from scratch you store those patterns in a memory and reuse them. the memory spread loss is a neat and simple way to make sure the memory does not collapse and stays useful throughout training.
+
+What i personally found most elegant is the separation of identity features and context query features. most prior methods pack everything into one set of features and let attention sort it out. STMN says these are two different jobs and gives them to separate feature heads. it makes each part cleaner and easier to optimise.
+
+There are some practical limitations. the memory sizes $M$ and $N$ are fixed and need to be tuned separately for each dataset using grid search which is a bit annoying. if someone deploys this in a new environment they would have to redo that search. a memory that can grow dynamically would make more sense. the model also uses ResNet-50 which is not particularly lightweight. running this in real-time on a standard surveillance setup with limited compute would probably need a smaller backbone.
+
+Overall, building this paper from scratch was genuinely useful. the high-level idea sounds simple enough but there are several implementation details like the BN before subtraction, the LSTM not being used for aggregation directly, the separate query heads and the spread loss weight that only become clear when you actually try to build the thing and see what breaks without them. the final model does reach state of the art on MARS, DukeMTMC-VideoReID and LS-VID which shows the approach actually works well.
+
+\section*{Acknowledgement}
+
+I want to thank the authors of the STMN paper for making their work and code publicly available. this implementation was done as part of the research paper implementation project in the Mehta Family School of DSAI at IIT Guwahati.
+
+\begin{thebibliography}{10}
+
+\bibitem{eom2021stmn}
+C. Eom, G. Lee, J. Lee, and B. Ham,
+``Video-based person re-identification with spatial and temporal memory networks,''
+\textit{arXiv:2108.09039}, 2021.
+
+\bibitem{fu2019sta}
+Y. Fu, X. Wang, Y. Wei, and T. Huang,
+``STA: Spatial-temporal attention for large-scale video-based person re-identification,''
+in \textit{Proc. AAAI Conf. Artificial Intelligence}, 2019.
+
+\bibitem{liu2019ste}
+C.-T. Liu, C.-W. Wu, Y.-C. F. Wang, and S.-Y. Chien,
+``Spatially and temporally efficient non-local attention network for video-based person re-identification,''
+in \textit{Proc. British Machine Vision Conf. (BMVC)}, 2019.
+
+\bibitem{li2019gltr}
+J. Li, J. Wang, Q. Tian, W. Gao, and S. Zhang,
+``Global-local temporal representations for video person re-identification,''
+in \textit{Proc. IEEE/CVF Int. Conf. Computer Vision (ICCV)}, 2019.
+
+\bibitem{liu2017qan}
+Y. Liu, J. Yan, and W. Ouyang,
+``Quality aware network for set to set recognition,''
+in \textit{Proc. IEEE Conf. Computer Vision and Pattern Recognition (CVPR)}, 2017.
+
+\bibitem{li2018harmonious}
+W. Li, X. Zhu, and S. Gong,
+``Harmonious attention network for person re-identification,''
+in \textit{Proc. IEEE Conf. Computer Vision and Pattern Recognition (CVPR)}, 2018.
+
+\bibitem{sukhbaatar2015end}
+S. Sukhbaatar, J. Weston, and R. Fergus,
+``End-to-end memory networks,''
+in \textit{Advances in Neural Information Processing Systems (NeurIPS)}, 2015.
+
+\bibitem{he2016residual}
+K. He, X. Zhang, S. Ren, and J. Sun,
+``Deep residual learning for image recognition,''
+in \textit{Proc. IEEE Conf. Computer Vision and Pattern Recognition (CVPR)}, 2016.
+
+\bibitem{hermans2017triplet}
+A. Hermans, L. Beyer, and B. Leibe,
+``In defense of the triplet loss for person re-identification,''
+\textit{arXiv:1703.07737}, 2017.
+
+\bibitem{zheng2016mars}
+L. Zheng, Z. Bie, Y. Sun, J. Wang, C. Su, S. Wang, and Q. Tian,
+``MARS: A video benchmark for large-scale person re-identification,''
+in \textit{Proc. European Conf. Computer Vision (ECCV)}, 2016.
+
+\end{thebibliography}
+
+\end{document}
